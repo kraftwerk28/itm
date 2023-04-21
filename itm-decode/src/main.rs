@@ -1,7 +1,10 @@
 use anyhow::{bail, Context, Result};
-use itm::{serial, Decoder, DecoderOptions, LocalTimestampOptions, TimestampsConfiguration};
+use itm::{
+    serial, Decoder, DecoderOptions, LocalTimestampOptions, TimestampsConfiguration, TracePacket,
+};
 use std::fs::File;
 use std::path::PathBuf;
+use std::str;
 use structopt::StructOpt;
 
 #[derive(StructOpt, Debug)]
@@ -72,9 +75,23 @@ fn main() -> Result<()> {
             }
         }
         _ => {
+            let mut log_line: Vec<u8> = Vec::new();
             for packet in decoder.singles() {
                 match packet {
                     Err(e) => return Err(e).context("Decoder error"),
+                    Ok(TracePacket::Instrumentation { port, payload }) => {
+                        if payload.len() == 1 && payload[0] == 10 {
+                            match str::from_utf8(&log_line) {
+                                Ok(s) => println!("{port}\t{s}"),
+                                Err(e) => eprintln!("{e}"),
+                            }
+                            log_line.clear();
+                        } else {
+                            for c in payload {
+                                log_line.push(c);
+                            }
+                        }
+                    }
                     Ok(packet) => println!("{:?}", packet),
                 }
             }
